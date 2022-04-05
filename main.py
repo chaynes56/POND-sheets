@@ -5,28 +5,31 @@
 COPOST POND project table manipulation
 """
 
+# TODO Prisoners table
+#  Create LANGUAGE field, with default English, and Spanish when O_GS_Code ends in -S
+#  Fields of original info from Ray
+#  Delete P_Name through I.Zip
+#  O_GS_Code rename nto ORIGIN, with the following replacements
+#  FKW.. and PCF temp -> PCF
+#  Rename CO_db_date to CO_DATE
+#  Rename O_Date to ORIGIN_DATE
+#  Eventually, but not now, remove col A with origin index numbers
+# TODO Prison table
+#   Check if address fields less zip uniquely determine zip
+#    Create JURISDICTION field
+#   Value is County if Jail in FACILITY field, None if FACILITY is empty, otherwise State
+#   Eventually, but not now, remove col A with origin index numbers
+
 import pandas as pd
 import re
 
-housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d.$')
+housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d+$')
 PRISON_COL = 2  # PRISON column index in prison table
 
 def df_write_csv(name, df):
     """Write DF to NAME.csv"""
     with open(f'Output/{name}.csv', 'w') as f:
         df.to_csv(f)
-
-def df_write_txt(name, df):
-    """Write DF to Output/NAME.txt"""
-    with open(f'Output/{name}.txt', 'w') as f:
-        # Attempt to left align everything XX
-        # left_aligned_df = df.style.set_properties(**{'text-align': 'left'})
-        # left_aligned_df = left_aligned_df.set_table_styles(
-        #     [dict(selector='th', props=[('text-align', 'left')])]
-        # )
-        # f.write(left_aligned_df)
-        # f.write(dfs.to_string(justify='left'))
-        f.write(df.to_string())
 
 def df_sort(df):
     """Return DF sorted on all columns"""
@@ -49,6 +52,8 @@ def main(csv_file):
     df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
     df = df.astype({'PRISON': int})
     df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within prison (optional)
+    # df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
+    # df = df.rename(columns={'CO_db_date': 'CO_DATE', 'O_Date': 'ORIGIN_DATE'})
 
     # Move HOUSING information to its new column
     for row_index in range(1, df.shape[0]):
@@ -58,22 +63,16 @@ def main(csv_file):
 
     # Create df for prisons, moving address information from prisoner table
     df_a = df.loc[:, 'FACILITY':'ZIP']
-    df_write_txt('prisoners_1', df)  # XX
     df = df.drop(columns=list(df_a.columns.values) + ['XXX'])
 
     # Sort prisons and drop duplicates
     df_as = df_sort(df_a)
-    df_write_txt('addresses_sorted', df_as)  # XX
     df_nd = df_sort(df_as.drop_duplicates())
-    df_write_txt('prisons', df_nd)  # XX
     df_write_csv('prisons', df_nd)
 
     # Fill in PRISONERS field lists and fill in prisoners table PRISON fields
     ia_prisons = list(df_nd.index)  # capture the address-history indices
-    # XX df_nd = df_nd.reset_index(drop=True)  # only then reset the indices for table assignment
     ia_prisoners = list(df_as.index)
-    print(ia_prisons)  # xx
-    print(ia_prisoners)  # xx
     num_prisons = df_nd.shape[0]
     next_index = None
     for prison_index in range(1, num_prisons):
@@ -84,10 +83,8 @@ def main(csv_file):
         else:
             this_index = next_index
             next_index = num_prisons - 1
-        print(prison_index, ia_prisoners[this_index: next_index])  # XX
         for prisoner in ia_prisoners[this_index: next_index]:
             df.iloc[prisoner, PRISON_COL] = prison_index
-    df_write_txt('prisoners', df)  # XX
     df_write_csv('prisoners', df)
 
 
