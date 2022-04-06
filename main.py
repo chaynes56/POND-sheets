@@ -5,15 +5,7 @@
 COPOST POND project table manipulation
 """
 
-# TODO Prisoners table
-#  Create LANGUAGE field, with default English, and Spanish when O_GS_Code ends in -S
-#  Fields of original info from Ray
-#  Delete P_Name through I.Zip
-#  O_GS_Code rename nto ORIGIN, with the following replacements
-#  FKW.. and PCF temp -> PCF
-#  Rename CO_db_date to CO_DATE
-#  Rename O_Date to ORIGIN_DATE
-#  Eventually, but not now, remove col A with origin index numbers
+# TODO regularize prisoners dates in CO_DATE and ORIGIN_DATE columns
 # TODO Prison table
 #   Check if address fields less zip uniquely determine zip
 #    Create JURISDICTION field
@@ -52,11 +44,23 @@ def main(csv_file):
     df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
     df = df.astype({'PRISON': int})
     df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within prison (optional)
-    # df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
-    # df = df.rename(columns={'CO_db_date': 'CO_DATE', 'O_Date': 'ORIGIN_DATE'})
+    df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
+    df = df.rename(columns={'O_GS_Code': 'ORIGIN',
+                            'CO_db_date': 'CO_DATE',
+                            'O_Date': 'ORIGIN_DATE'})
 
-    # Move HOUSING information to its new column
-    for row_index in range(1, df.shape[0]):
+    df = df.drop(df.loc[:, 'P_Name':'I_Zip'].columns, axis=1)  # drop PCF data we don't need
+
+    # Iterate over data records
+    for row_index in range(df.shape[0]):
+        origin = str(df.iloc[row_index]['ORIGIN'])
+        # LANGUAGE is Spanish when ORIGIN is FGW-S
+        if origin == 'FGW-S':
+            df.at[row_index, 'LANGUAGE'] = 'Spanish'
+        # Change all PCF origin codes to PCF
+        if origin in ['FGW-E', 'FGW-S', 'PCF temp']:
+            df.at[row_index, 'ORIGIN'] = 'PCF'
+        # Move HOUSING information to its new column
         if housing_re.search(df.iloc[row_index]['ADDRESS1']):
             df.at[row_index, 'HOUSING'] = df.iloc[row_index]['ADDRESS1']
             df.at[row_index, 'ADDRESS1'] = ''
@@ -68,6 +72,7 @@ def main(csv_file):
     # Sort prisons and drop duplicates
     df_as = df_sort(df_a)
     df_nd = df_sort(df_as.drop_duplicates())
+    # df_nd = df_nd.reset_index(drop=True)  # ?? uncomment at some point
     df_write_csv('prisons', df_nd)
 
     # Fill in PRISONERS field lists and fill in prisoners table PRISON fields
@@ -75,7 +80,7 @@ def main(csv_file):
     ia_prisoners = list(df_as.index)
     num_prisons = df_nd.shape[0]
     next_index = None
-    for prison_index in range(1, num_prisons):
+    for prison_index in range(num_prisons):
         if prison_index < num_prisons - 1:
             this_id, next_id = ia_prisons[prison_index: prison_index + 2]
             this_index = ia_prisoners.index(this_id)
@@ -85,6 +90,8 @@ def main(csv_file):
             next_index = num_prisons - 1
         for prisoner in ia_prisoners[this_index: next_index]:
             df.iloc[prisoner, PRISON_COL] = prison_index
+    df.index.name = 'Index'  # ?? does this work, do on prison table
+    # df = df.reset_index(drop=True)  # uncomment to remove index
     df_write_csv('prisoners', df)
 
 
