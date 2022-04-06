@@ -6,17 +6,15 @@ COPOST POND project table manipulation
 """
 
 # TODO regularize prisoners dates in CO_DATE and ORIGIN_DATE columns
-# TODO Prison table
-#   Check if address fields less zip uniquely determine zip
-#    Create JURISDICTION field
-#   Value is County if Jail in FACILITY field, None if FACILITY is empty, otherwise State
-#   Eventually, but not now, remove col A with origin index numbers
+# TODO Rename tables Facilities and Residents
 
 import pandas as pd
 import re
 
-housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d+$')
-PRISON_COL = 2  # PRISON column index in prison table
+housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d+$')  # recognize housing address
+county_re = re.compile(r'JAIL|COUNTY')  # recognize county jurisdiction
+PRISON_COL = 2  # PRISON column index in prisoner table
+JURISDICTION_COL = 0  # JURISDICTION column index in prison table
 
 def df_write_csv(name, df):
     """Write DF to NAME.csv"""
@@ -47,19 +45,23 @@ def main(csv_file):
     df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
     df = df.rename(columns={'O_GS_Code': 'ORIGIN',
                             'CO_db_date': 'CO_DATE',
-                            'O_Date': 'ORIGIN_DATE'})
+                            'O_Date': 'ORIGIN_DATE',
+                            'I_InmateID': 'INMATE_ID'})
 
     df = df.drop(df.loc[:, 'P_Name':'I_Zip'].columns, axis=1)  # drop PCF data we don't need
 
-    # Iterate over data records
+    # Iterate over prisoner records
     for row_index in range(df.shape[0]):
         origin = str(df.iloc[row_index]['ORIGIN'])
+
         # LANGUAGE is Spanish when ORIGIN is FGW-S
         if origin == 'FGW-S':
             df.at[row_index, 'LANGUAGE'] = 'Spanish'
+
         # Change all PCF origin codes to PCF
         if origin in ['FGW-E', 'FGW-S', 'PCF temp']:
             df.at[row_index, 'ORIGIN'] = 'PCF'
+
         # Move HOUSING information to its new column
         if housing_re.search(df.iloc[row_index]['ADDRESS1']):
             df.at[row_index, 'HOUSING'] = df.iloc[row_index]['ADDRESS1']
@@ -72,15 +74,25 @@ def main(csv_file):
     # Sort prisons and drop duplicates
     df_as = df_sort(df_a)
     df_nd = df_sort(df_as.drop_duplicates())
-    # df_nd = df_nd.reset_index(drop=True)  # ?? uncomment at some point
-    df_write_csv('prisons', df_nd)
 
-    # Fill in PRISONERS field lists and fill in prisoners table PRISON fields
-    ia_prisons = list(df_nd.index)  # capture the address-history indices
+    # Check that other address fields uniquely determine the zip code
+    addresses = [' '.join(row[: -1]) for row in df_nd.to_numpy()]
+    for i in range(len(addresses) - 1):
+        if addresses[i] == addresses[i + 1]:
+            print(f'Zip in row {i + 1} with address {addresses[i]} differs from following line')
+
+    # Add JURISDICTION field after INDEX
+    df_nd.insert(loc=JURISDICTION_COL, column='JURISDICTION', value='STATE')
+
+    # Capture the address-history indices
+    ia_prisons = list(df_nd.index)
     ia_prisoners = list(df_as.index)
+
+    # Iterate over prisons
     num_prisons = df_nd.shape[0]
     next_index = None
     for prison_index in range(num_prisons):
+        # Get first and last prisoner indices corresponding to the current prison
         if prison_index < num_prisons - 1:
             this_id, next_id = ia_prisons[prison_index: prison_index + 2]
             this_index = ia_prisoners.index(this_id)
@@ -88,14 +100,25 @@ def main(csv_file):
         else:
             this_index = next_index
             next_index = num_prisons - 1
+
+        # Fill in PRISONERS field lists and fill in prisoners table PRISON fields
         for prisoner in ia_prisoners[this_index: next_index]:
-            df.iloc[prisoner, PRISON_COL] = prison_index
-    df.index.name = 'Index'  # ?? does this work, do on prison table
-    # df = df.reset_index(drop=True)  # uncomment to remove index
+            df.iat[prisoner, PRISON_COL] = prison_index
+
+        facility = str(df_nd.iloc[prison_index]['FACILITY'])
+        if not facility:  # If facility is blank, the jurisdiction is NONE (released)
+            df_nd.iat[prison_index, JURISDICTION_COL] = 'NONE'
+        elif county_re.search(facility):  # If facility name indicates COUNTY jurisdiction, correct that
+            df_nd.iat[prison_index, JURISDICTION_COL] = 'COUNTY'
+
+    # Write the prisons and prisoners tables
+    df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
+    df_write_csv('prisons', df_nd)
+    df.index.name = 'INDEX'  # or remove index with df = df.reset_index(drop=True)
     df_write_csv('prisoners', df)
 
 
-# Initiate run if executing as a script (not module load)
+# Invoke main if executing as a script (not module load)
 if __name__ == '__main__':
     # numpy_matrix_test()
     main('Input/PrisonerAddresses.csv')
