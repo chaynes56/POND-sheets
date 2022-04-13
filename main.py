@@ -4,17 +4,33 @@
 """
 COPOST POND project table manipulation
 """
+# STATUS entries may be PENDING, ACTIVE (changed to PENDING at start of cycle), FLAGGED, INACTIVE, AND CHAPLIN
 
-# TODO regularize prisoners dates in CO_DATE and ORIGIN_DATE columns
-# TODO Rename tables Facilities and Residents
+# ?? order of columns
+# TODO
+#   rename facility and resident
+
 
 import pandas as pd
 import re
+from datetime import datetime
+import dateutil
 
 housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d+$')  # recognize housing address
-county_re = re.compile(r'JAIL|COUNTY')  # recognize county jurisdiction
-PRISON_COL = 2  # PRISON column index in prisoner table
+jurisdiction_res = {'NONE': re.compile(r'^$'),
+                    'COUNTY': re.compile(r'JAIL|COUNTY'),
+                    'FEDERAL': re.compile(r'FEDERAL|FMC|USP')}
+PRISON_COL = 3  # PRISON column index in prisoner table
 JURISDICTION_COL = 0  # JURISDICTION column index in prison table
+TIME_DISPLAY_FORMAT = '%-m/%-d/%-y'  # datetime output format
+STATUS_MAP = {'': 'FLAGGED',
+              'IN CUSTODY': 'PENDING',
+              'CHAPLAIN': 'CHAPLAIN'}
+
+def add_note(df, row_index, source, note):
+    """Append a note (if there is one) to NOTES field in the indicated row of df, indicating the source of the note."""
+    if note:
+        df.at[row_index, 'NOTES'] = f"{df.loc[row_index, 'NOTES']} {source}: {note}".strip()
 
 def df_write_csv(name, df):
     """Write DF to NAME.csv"""
@@ -35,20 +51,30 @@ def main(csv_file):
     Prisoner housing information, in some ADDRESS1 fields of the prisoner table, is moved to a new
     HOUSING field in the prisoner table.
     """
-    # Create dataframe of prisoner table and add PRISON and HOUSING columns
+    # Read prisoner sheet as dataframe of prisoner sheet and do elementary cleanup
     with open(csv_file, newline='') as f:
         df = pd.read_csv(f, dtype=str, header=0)  # 0-based indices in first column, not including header
-    df = df.fillna('').applymap(lambda s: s.strip().upper())
-    df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
-    df = df.astype({'PRISON': int})
-    df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within prison (optional)
-    df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
-    df = df.rename(columns={'O_GS_Code': 'ORIGIN',
+    df = df.drop(labels=range(727, 733), axis=0).reset_index(drop=True)  # drop rows with random data
+    df.fillna('', inplace=True)  # blank fields back to empty strings so string ops aren't fouled-up
+    df = df.applymap(lambda s: s.strip().upper())  # strip leading and trailing spaces and uppercase for uniformity
+
+    # Rename, save, drop and add columns
+    df = df.rename(columns={'I_Fname': 'FIRST_NAME',
+                            'I_Lname': 'LAST_NAME',
+                            'O_GS_Code': 'ORIGIN',
                             'CO_db_date': 'CO_DATE',
                             'O_Date': 'ORIGIN_DATE',
-                            'I_InmateID': 'INMATE_ID'})
-
+                            'I_InmateID': 'INMATE_ID',
+                            'Release': 'RELEASE',
+                            'Notes as of 10/3/21': 'NOTES'})
+    df_saved_cols = df.loc[:, 'Sent Letter':'LAST_NAME']
+    df = df.drop(df.loc[:, 'Sent Letter':'Full Name'].columns, axis=1)
+    df = df.drop(['XXX'], axis=1)  # no data
     df = df.drop(df.loc[:, 'P_Name':'I_Zip'].columns, axis=1)  # drop PCF data we don't need
+    df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
+    df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within prison (optional)
+    df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
+    df.insert(loc=df.columns.get_loc('CO_DATE') + 1, column='REPEAT', value=False)
 
     # Iterate over prisoner records
     for row_index in range(df.shape[0]):
@@ -67,13 +93,52 @@ def main(csv_file):
             df.at[row_index, 'HOUSING'] = df.iloc[row_index]['ADDRESS1']
             df.at[row_index, 'ADDRESS1'] = ''
 
+        # Initial field values to variables, and process them
+        sent_letter, checked, full_name, first_name, last_name = df_saved_cols.iloc[row_index, :].values.tolist()
+        if not first_name:  # If no first name, fill first and last from full name
+            name_parts = full_name.split()
+            df.at[row_index, 'FIRST_NAME'] = ' '.join(name_parts[: -1])
+            df.at[row_index, 'LAST_NAME'] = name_parts[-1]
+        else:  # Check that full name (with multiple spaces reduced to one) is first name followed by last name
+            make_full_name = f'{first_name} {last_name}'.strip()
+            if re.sub(r'\s+', ' ', full_name) != make_full_name:
+                print(f'Bad full name {full_name} not {make_full_name} index {row_index}')
+        add_note(df, row_index, 'SENT_LETTER', sent_letter)
+        if checked != 'X':
+            add_note(df, row_index, 'CHECKED', checked)
+
+        # Reformat origin dates
+        o_date = df.at[row_index, 'ORIGIN_DATE']
+        if o_date:
+            date = dateutil.parser.parse(o_date)
+            df.at[row_index, 'ORIGIN_DATE'] = date.strftime(TIME_DISPLAY_FORMAT)
+
+        # CO_DATE formatting and notes
+        co_date = df.at[row_index, 'CO_DATE']
+        if co_date:
+            try:
+                df.at[row_index, 'CO_DATE'] = datetime.strptime(co_date, '%m/%d/%Y').strftime(TIME_DISPLAY_FORMAT)
+            except ValueError:  # Move entry to NOTES
+                df.at[row_index, 'CO_DATE'] = ''
+                add_note(df, row_index, 'CO_DATE', co_date)
+
+        # Status reformatting and notes
+        status = df.at[row_index, 'STATUS']
+        new_status = STATUS_MAP.get(status, None)
+        if not new_status:
+            new_status = 'FLAGGED'
+            add_note(df, row_index, 'STATUS', status)
+        df.at[row_index, 'STATUS'] = new_status
+
     # Create df for prisons, moving address information from prisoner table
     df_a = df.loc[:, 'FACILITY':'ZIP']
-    df = df.drop(columns=list(df_a.columns.values) + ['XXX'])
+    # df = df.drop(df.loc[:, 'FACILITY':'ZIP'].columns, axis=1)
 
-    # Sort prisons and drop duplicates
+    # Sort prisons, drop duplicates, and add fields at end
     df_as = df_sort(df_a)
     df_nd = df_sort(df_as.drop_duplicates())
+    num_prison_cols = df_nd.shape[1]
+    df_nd.insert(loc=num_prison_cols, column='NOTES', value='')
 
     # Check that other address fields uniquely determine the zip code
     addresses = [' '.join(row[: -1]) for row in df_nd.to_numpy()]
@@ -106,10 +171,10 @@ def main(csv_file):
             df.iat[prisoner, PRISON_COL] = prison_index
 
         facility = str(df_nd.iloc[prison_index]['FACILITY'])
-        if not facility:  # If facility is blank, the jurisdiction is NONE (released)
-            df_nd.iat[prison_index, JURISDICTION_COL] = 'NONE'
-        elif county_re.search(facility):  # If facility name indicates COUNTY jurisdiction, correct that
-            df_nd.iat[prison_index, JURISDICTION_COL] = 'COUNTY'
+        for jurisdiction, j_re in jurisdiction_res.items():
+            if j_re.search(facility):
+                df_nd.iat[prison_index, JURISDICTION_COL] = jurisdiction
+                break
 
     # Write the prisons and prisoners tables
     df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
@@ -121,4 +186,4 @@ def main(csv_file):
 # Invoke main if executing as a script (not module load)
 if __name__ == '__main__':
     # numpy_matrix_test()
-    main('Input/PrisonerAddresses.csv')
+    main('Input/SEND TO THESE.csv')
