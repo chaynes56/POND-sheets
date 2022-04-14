@@ -7,9 +7,6 @@ COPOST POND project table manipulation
 # STATUS entries may be PENDING, ACTIVE (changed to PENDING at start of cycle), FLAGGED, INACTIVE, AND CHAPLIN
 
 # ?? order of columns
-# TODO
-#   rename facility and resident
-
 
 import pandas as pd
 import re
@@ -20,8 +17,8 @@ housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d+$')  # recognize ho
 jurisdiction_res = {'NONE': re.compile(r'^$'),
                     'COUNTY': re.compile(r'JAIL|COUNTY'),
                     'FEDERAL': re.compile(r'FEDERAL|FMC|USP')}
-PRISON_COL = 3  # PRISON column index in prisoner table
-JURISDICTION_COL = 0  # JURISDICTION column index in prison table
+PRISON_COL = 3  # PRISON column index in resident table
+JURISDICTION_COL = 0  # JURISDICTION column index in facility table
 TIME_DISPLAY_FORMAT = '%-m/%-d/%-y'  # datetime output format
 STATUS_MAP = {'': 'FLAGGED',
               'IN CUSTODY': 'PENDING',
@@ -43,15 +40,15 @@ def df_sort(df):
 
 def main(csv_file):
     """
-    Read CSV_FILE: a COPOST prisoner address table.
-    Create a Prisons.csv file table, moving the current address fields from the prisoner table, with a
-    single entry for each prison. Replace prisoner table address information with a prison table
+    Read CSV_FILE: a COPOST resident address table.
+    Create a Prisons.csv file table, moving the current address fields from the resident table, with a
+    single entry for each facility. Replace resident table address information with a facility table
     record reference.
 
-    Prisoner housing information, in some ADDRESS1 fields of the prisoner table, is moved to a new
-    HOUSING field in the prisoner table.
+    Prisoner housing information, in some ADDRESS1 fields of the resident table, is moved to a new
+    HOUSING field in the resident table.
     """
-    # Read prisoner sheet as dataframe of prisoner sheet and do elementary cleanup
+    # Read resident sheet as dataframe of resident sheet and do elementary cleanup
     with open(csv_file, newline='') as f:
         df = pd.read_csv(f, dtype=str, header=0)  # 0-based indices in first column, not including header
     df = df.drop(labels=range(727, 733), axis=0).reset_index(drop=True)  # drop rows with random data
@@ -72,11 +69,11 @@ def main(csv_file):
     df = df.drop(['XXX'], axis=1)  # no data
     df = df.drop(df.loc[:, 'P_Name':'I_Zip'].columns, axis=1)  # drop PCF data we don't need
     df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
-    df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within prison (optional)
+    df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within facility (optional)
     df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
     df.insert(loc=df.columns.get_loc('CO_DATE') + 1, column='REPEAT', value=False)
 
-    # Iterate over prisoner records
+    # Iterate over resident records
     for row_index in range(df.shape[0]):
         origin = str(df.iloc[row_index]['ORIGIN'])
 
@@ -130,15 +127,15 @@ def main(csv_file):
             add_note(df, row_index, 'STATUS', status)
         df.at[row_index, 'STATUS'] = new_status
 
-    # Create df for prisons, moving address information from prisoner table
+    # Create df for facilitys, moving address information from resident table
     df_a = df.loc[:, 'FACILITY':'ZIP']
     # df = df.drop(df.loc[:, 'FACILITY':'ZIP'].columns, axis=1)
 
-    # Sort prisons, drop duplicates, and add fields at end
+    # Sort facilitys, drop duplicates, and add fields at end
     df_as = df_sort(df_a)
     df_nd = df_sort(df_as.drop_duplicates())
-    num_prison_cols = df_nd.shape[1]
-    df_nd.insert(loc=num_prison_cols, column='NOTES', value='')
+    num_facility_cols = df_nd.shape[1]
+    df_nd.insert(loc=num_facility_cols, column='NOTES', value='')
 
     # Check that other address fields uniquely determine the zip code
     addresses = [' '.join(row[: -1]) for row in df_nd.to_numpy()]
@@ -150,37 +147,37 @@ def main(csv_file):
     df_nd.insert(loc=JURISDICTION_COL, column='JURISDICTION', value='STATE')
 
     # Capture the address-history indices
-    ia_prisons = list(df_nd.index)
-    ia_prisoners = list(df_as.index)
+    ia_facilitys = list(df_nd.index)
+    ia_residents = list(df_as.index)
 
-    # Iterate over prisons
-    num_prisons = df_nd.shape[0]
+    # Iterate over facilitys
+    num_facilitys = df_nd.shape[0]
     next_index = None
-    for prison_index in range(num_prisons):
-        # Get first and last prisoner indices corresponding to the current prison
-        if prison_index < num_prisons - 1:
-            this_id, next_id = ia_prisons[prison_index: prison_index + 2]
-            this_index = ia_prisoners.index(this_id)
-            next_index = ia_prisoners.index(next_id)
+    for facility_index in range(num_facilitys):
+        # Get first and last resident indices corresponding to the current facility
+        if facility_index < num_facilitys - 1:
+            this_id, next_id = ia_facilitys[facility_index: facility_index + 2]
+            this_index = ia_residents.index(this_id)
+            next_index = ia_residents.index(next_id)
         else:
             this_index = next_index
-            next_index = num_prisons - 1
+            next_index = num_facilitys - 1
 
-        # Fill in PRISONERS field lists and fill in prisoners table PRISON fields
-        for prisoner in ia_prisoners[this_index: next_index]:
-            df.iat[prisoner, PRISON_COL] = prison_index
+        # Fill in PRISONERS field lists and fill in residents table PRISON fields
+        for resident in ia_residents[this_index: next_index]:
+            df.iat[resident, PRISON_COL] = facility_index
 
-        facility = str(df_nd.iloc[prison_index]['FACILITY'])
+        facility = str(df_nd.iloc[facility_index]['FACILITY'])
         for jurisdiction, j_re in jurisdiction_res.items():
             if j_re.search(facility):
-                df_nd.iat[prison_index, JURISDICTION_COL] = jurisdiction
+                df_nd.iat[facility_index, JURISDICTION_COL] = jurisdiction
                 break
 
-    # Write the prisons and prisoners tables
+    # Write the facilitys and residents tables
     df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
-    df_write_csv('prisons', df_nd)
+    df_write_csv('facilitys', df_nd)
     df.index.name = 'INDEX'  # or remove index with df = df.reset_index(drop=True)
-    df_write_csv('prisoners', df)
+    df_write_csv('residents', df)
 
 
 # Invoke main if executing as a script (not module load)
