@@ -127,11 +127,11 @@ def main(csv_file):
             add_note(df, row_index, 'STATUS', status)
         df.at[row_index, 'STATUS'] = new_status
 
-    # Create df for facilitys, moving address information from resident table
+    # Create df for facilities, moving address information from resident table
     df_a = df.loc[:, 'FACILITY':'ZIP']
     # df = df.drop(df.loc[:, 'FACILITY':'ZIP'].columns, axis=1)
 
-    # Sort facilitys, drop duplicates, and add fields at end
+    # Sort facilities, drop duplicates, and add fields at end
     df_as = df_sort(df_a)
     df_nd = df_sort(df_as.drop_duplicates())
     num_facility_cols = df_nd.shape[1]
@@ -147,21 +147,21 @@ def main(csv_file):
     df_nd.insert(loc=JURISDICTION_COL, column='JURISDICTION', value='STATE')
 
     # Capture the address-history indices
-    ia_facilitys = list(df_nd.index)
+    ia_facilities = list(df_nd.index)
     ia_residents = list(df_as.index)
 
-    # Iterate over facilitys
-    num_facilitys = df_nd.shape[0]
+    # Iterate over facilities
+    num_facilities = df_nd.shape[0]
     next_index = None
-    for facility_index in range(num_facilitys):
+    for facility_index in range(num_facilities):
         # Get first and last resident indices corresponding to the current facility
-        if facility_index < num_facilitys - 1:
-            this_id, next_id = ia_facilitys[facility_index: facility_index + 2]
+        if facility_index < num_facilities - 1:
+            this_id, next_id = ia_facilities[facility_index: facility_index + 2]
             this_index = ia_residents.index(this_id)
             next_index = ia_residents.index(next_id)
         else:
             this_index = next_index
-            next_index = num_facilitys - 1
+            next_index = num_facilities - 1
 
         # Fill in PRISONERS field lists and fill in residents table PRISON fields
         for resident in ia_residents[this_index: next_index]:
@@ -173,9 +173,9 @@ def main(csv_file):
                 df_nd.iat[facility_index, JURISDICTION_COL] = jurisdiction
                 break
 
-    # Write the facilitys and residents tables
+    # Write the facilities and residents tables
     df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
-    df_write_csv('facilitys', df_nd)
+    df_write_csv('facilities', df_nd)
     df.index.name = 'INDEX'  # or remove index with df = df.reset_index(drop=True)
     df_write_csv('residents', df)
 
