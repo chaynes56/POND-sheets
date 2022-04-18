@@ -16,7 +16,7 @@ import dateutil
 housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d+$')  # recognize housing address
 jurisdiction_res = {'NONE': re.compile(r'^$'),
                     'COUNTY': re.compile(r'JAIL|COUNTY'),
-                    'FEDERAL': re.compile(r'FEDERAL|FMC|USP')}
+                    'FEDERAL': re.compile(r'FEDERAL|FMC|USP|FCI')}
 PRISON_COL = 3  # PRISON column index in resident table
 JURISDICTION_COL = 0  # JURISDICTION column index in facility table
 TIME_DISPLAY_FORMAT = '%-m/%-d/%-y'  # datetime output format
@@ -143,8 +143,9 @@ def main(csv_file):
         if addresses[i] == addresses[i + 1]:
             print(f'Zip in row {i + 1} with address {addresses[i]} differs from following line')
 
-    # Add JURISDICTION field after INDEX
+    # Add JURISDICTION and WEB LINK fields after INDEX
     df_nd.insert(loc=JURISDICTION_COL, column='JURISDICTION', value='STATE')
+    df_nd.insert(loc=JURISDICTION_COL + 1, column='WEB LINK', value='')
 
     # Capture the address-history indices
     ia_facilities = list(df_nd.index)
