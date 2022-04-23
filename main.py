@@ -6,7 +6,11 @@ COPOST POND project table manipulation
 """
 # STATUS entries may be PENDING, ACTIVE (changed to PENDING at start of cycle), FLAGGED, INACTIVE, AND CHAPLIN
 
-# ?? order of columns
+# TODO facility type populate
+# TODO resident table move status before notes
+# TODO capture Sent Letter field info as date with 1/1/70
+# TODO export heading at top, not bottom
+
 
 import pandas as pd
 import re
@@ -23,6 +27,14 @@ TIME_DISPLAY_FORMAT = '%-m/%-d/%-y'  # datetime output format
 STATUS_MAP = {'': 'FLAGGED',
               'IN CUSTODY': 'PENDING',
               'CHAPLAIN': 'CHAPLAIN'}
+COLUMN_RENAMING = {'I_Fname': 'FIRST_NAME',
+                   'I_Lname': 'LAST_NAME',
+                   'O_GS_Code': 'ORIGIN',
+                   'CO_db_date': 'CO_DATE',
+                   'O_Date': 'ORIGIN_DATE',
+                   'I_InmateID': 'INMATE_ID',
+                   'Release': 'RELEASE',
+                   'Notes as of 10/3/21': 'NOTES'}
 
 def add_note(df, row_index, source, note):
     """Append a note (if there is one) to NOTES field in the indicated row of df, indicating the source of the note."""
@@ -31,7 +43,7 @@ def add_note(df, row_index, source, note):
 
 def df_write_csv(name, df):
     """Write DF to NAME.csv"""
-    with open(f'Output/{name}.csv', 'w') as f:
+    with open(f'Data/{name}.csv', 'w') as f:
         df.to_csv(f)
 
 def df_sort(df):
@@ -47,27 +59,25 @@ def main(csv_file):
 
     Prisoner housing information, in some ADDRESS1 fields of the resident table, is moved to a new
     HOUSING field in the resident table.
+
+    And other things; the above is not a complete list of actions.
     """
     # Read resident sheet as dataframe of resident sheet and do elementary cleanup
     with open(csv_file, newline='') as f:
         df = pd.read_csv(f, dtype=str, header=0)  # 0-based indices in first column, not including header
-    df = df.drop(labels=range(727, 733), axis=0).reset_index(drop=True)  # drop rows with random data
+    # Not needed after cleanup
+    # df = df.drop(labels=range(727, 733), axis=0).reset_index(drop=True)  # drop rows with random data
     df.fillna('', inplace=True)  # blank fields back to empty strings so string ops aren't fouled-up
     df = df.applymap(lambda s: s.strip().upper())  # strip leading and trailing spaces and uppercase for uniformity
 
     # Rename, save, drop and add columns
-    df = df.rename(columns={'I_Fname': 'FIRST_NAME',
-                            'I_Lname': 'LAST_NAME',
-                            'O_GS_Code': 'ORIGIN',
-                            'CO_db_date': 'CO_DATE',
-                            'O_Date': 'ORIGIN_DATE',
-                            'I_InmateID': 'INMATE_ID',
-                            'Release': 'RELEASE',
-                            'Notes as of 10/3/21': 'NOTES'})
+    df = df.rename(columns=COLUMN_RENAMING)
     df_saved_cols = df.loc[:, 'Sent Letter':'LAST_NAME']
     df = df.drop(df.loc[:, 'Sent Letter':'Full Name'].columns, axis=1)
     df = df.drop(['XXX'], axis=1)  # no data
     df = df.drop(df.loc[:, 'P_Name':'I_Zip'].columns, axis=1)  # drop PCF data we don't need
+    status_col = df.pop('STATUS')
+    df.insert(loc=df.columns.get_loc('NOTES'), column='STATUS', value=status_col)
     df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
     df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within facility (optional)
     df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
@@ -135,7 +145,8 @@ def main(csv_file):
     df_as = df_sort(df_a)
     df_nd = df_sort(df_as.drop_duplicates())
     num_facility_cols = df_nd.shape[1]
-    df_nd.insert(loc=num_facility_cols, column='NOTES', value='')
+    df_nd.insert(loc=num_facility_cols, column='CHECKED', value='')
+    df_nd.insert(loc=num_facility_cols + 1, column='NOTES', value='')
 
     # Check that other address fields uniquely determine the zip code
     addresses = [' '.join(row[: -1]) for row in df_nd.to_numpy()]
@@ -143,9 +154,11 @@ def main(csv_file):
         if addresses[i] == addresses[i + 1]:
             print(f'Zip in row {i + 1} with address {addresses[i]} differs from following line')
 
-    # Add JURISDICTION and WEB LINK fields after INDEX
+    # Add JURISDICTION, J_STATE (initialized to STATE values), TYPE, and WEB LINK fields after INDEX
     df_nd.insert(loc=JURISDICTION_COL, column='JURISDICTION', value='STATE')
-    df_nd.insert(loc=JURISDICTION_COL + 1, column='WEB LINK', value='')
+    df_nd.insert(loc=JURISDICTION_COL + 1, column='J_STATE', value=df_nd['STATE'])
+    df_nd.insert(loc=JURISDICTION_COL + 2, column='TYPE', value='')
+    df_nd.insert(loc=JURISDICTION_COL + 3, column='WEB_LINK', value='')
 
     # Capture the address-history indices
     ia_facilities = list(df_nd.index)
@@ -184,4 +197,4 @@ def main(csv_file):
 # Invoke main if executing as a script (not module load)
 if __name__ == '__main__':
     # numpy_matrix_test()
-    main('Input/SEND TO THESE.csv')
+    main('Data/SEND TO THESE.csv')
