@@ -6,12 +6,6 @@ COPOST POND project table manipulation
 """
 # STATUS entries may be PENDING, ACTIVE (changed to PENDING at start of cycle), FLAGGED, INACTIVE, AND CHAPLIN
 
-# TODO facility type populate
-# TODO resident table move status before notes
-# TODO capture Sent Letter field info as date with 1/1/70
-# TODO export heading at top, not bottom
-
-
 import pandas as pd
 import re
 from datetime import datetime
@@ -22,8 +16,9 @@ jurisdiction_res = {'NONE': re.compile(r'^$'),
                     'COUNTY': re.compile(r'JAIL|COUNTY'),
                     'FEDERAL': re.compile(r'FEDERAL|FMC|USP|FCI')}
 PRISON_COL = 3  # PRISON column index in resident table
-JURISDICTION_COL = 0  # JURISDICTION column index in facility table
+[JURISDICTION_COL, J_STATE_COL, TYPE_COL, WEB_LINK_COL] = range(4)  # col indices in facilities table
 TIME_DISPLAY_FORMAT = '%-m/%-d/%-y'  # datetime output format
+DEFAULT_TIME = '1/1/1970'
 STATUS_MAP = {'': 'FLAGGED',
               'IN CUSTODY': 'PENDING',
               'CHAPLAIN': 'CHAPLAIN'}
@@ -77,6 +72,7 @@ def main(csv_file):
     df = df.drop(['XXX'], axis=1)  # no data
     df = df.drop(df.loc[:, 'P_Name':'I_Zip'].columns, axis=1)  # drop PCF data we don't need
     status_col = df.pop('STATUS')
+    df.insert(loc=df.columns.get_loc('NOTES'), column='SENT_LETTER', value='')
     df.insert(loc=df.columns.get_loc('NOTES'), column='STATUS', value=status_col)
     df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
     df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within facility (optional)
@@ -110,7 +106,9 @@ def main(csv_file):
             make_full_name = f'{first_name} {last_name}'.strip()
             if re.sub(r'\s+', ' ', full_name) != make_full_name:
                 print(f'Bad full name {full_name} not {make_full_name} index {row_index}')
-        add_note(df, row_index, 'SENT_LETTER', sent_letter)
+        if sent_letter:
+            df.at[row_index, 'SENT_LETTER'] = DEFAULT_TIME if sent_letter == 'COPOST' else sent_letter.split()[0]
+
         if checked != 'X':
             add_note(df, row_index, 'CHECKED', checked)
 
@@ -156,9 +154,9 @@ def main(csv_file):
 
     # Add JURISDICTION, J_STATE (initialized to STATE values), TYPE, and WEB LINK fields after INDEX
     df_nd.insert(loc=JURISDICTION_COL, column='JURISDICTION', value='STATE')
-    df_nd.insert(loc=JURISDICTION_COL + 1, column='J_STATE', value=df_nd['STATE'])
-    df_nd.insert(loc=JURISDICTION_COL + 2, column='TYPE', value='')
-    df_nd.insert(loc=JURISDICTION_COL + 3, column='WEB_LINK', value='')
+    df_nd.insert(loc=J_STATE_COL, column='J_STATE', value=df_nd['STATE'])
+    df_nd.insert(loc=TYPE_COL, column='TYPE', value='')
+    df_nd.insert(loc=WEB_LINK_COL, column='WEB_LINK', value='')
 
     # Capture the address-history indices
     ia_facilities = list(df_nd.index)
@@ -185,6 +183,10 @@ def main(csv_file):
         for jurisdiction, j_re in jurisdiction_res.items():
             if j_re.search(facility):
                 df_nd.iat[facility_index, JURISDICTION_COL] = jurisdiction
+                f_type = ('PRISON' if jurisdiction in ['STATE', 'FEDERAL']
+                          else 'JAIL' if jurisdiction == 'COUNTY'
+                          else '')
+                df_nd.iat[facility_index, TYPE_COL] = f_type
                 break
 
     # Write the facilities and residents tables
