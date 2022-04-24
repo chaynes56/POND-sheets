@@ -6,6 +6,10 @@ COPOST POND project table manipulation
 """
 # STATUS entries may be PENDING, ACTIVE (changed to PENDING at start of cycle), FLAGGED, INACTIVE, AND CHAPLIN
 
+# TODO
+#  indexing starting from 2
+# TODO? facilities output sorted by index
+
 import pandas as pd
 import re
 from datetime import datetime
@@ -15,7 +19,7 @@ housing_re = re.compile(r'^HSG:|-\d| YARD$|^ZONE |^UNIT |^\d+$')  # recognize ho
 jurisdiction_res = {'NONE': re.compile(r'^$'),
                     'COUNTY': re.compile(r'JAIL|COUNTY'),
                     'FEDERAL': re.compile(r'FEDERAL|FMC|USP|FCI')}
-PRISON_COL = 3  # PRISON column index in resident table
+FACILITY_COL = 3  # FACILITY column index in resident table
 [JURISDICTION_COL, J_STATE_COL, TYPE_COL, WEB_LINK_COL] = range(4)  # col indices in facilities table
 TIME_DISPLAY_FORMAT = '%-m/%-d/%-y'  # datetime output format
 DEFAULT_TIME = '1/1/1970'
@@ -74,9 +78,9 @@ def main(csv_file):
     status_col = df.pop('STATUS')
     df.insert(loc=df.columns.get_loc('NOTES'), column='SENT_LETTER', value='')
     df.insert(loc=df.columns.get_loc('NOTES'), column='STATUS', value=status_col)
-    df.insert(loc=PRISON_COL, column='PRISON', value=0)  # insert after I_InmateID
-    df.insert(loc=PRISON_COL + 1, column='HOUSING', value='')  # last known housing within facility (optional)
-    df.insert(loc=PRISON_COL + 2, column='LANGUAGE', value='English')
+    df.insert(loc=FACILITY_COL, column='FAC_INDEX', value=0)  # insert after I_InmateID
+    df.insert(loc=FACILITY_COL + 1, column='HOUSING', value='')  # last known housing within facility (optional)
+    df.insert(loc=FACILITY_COL + 2, column='LANGUAGE', value='English')
     df.insert(loc=df.columns.get_loc('CO_DATE') + 1, column='REPEAT', value=False)
 
     # Iterate over resident records
@@ -177,9 +181,9 @@ def main(csv_file):
             this_index = next_index
             next_index = num_facilities - 1
 
-        # Fill in PRISONERS field lists and fill in residents table PRISON fields
+        # Fill in FACILITY_COL of the residents table
         for resident in ia_residents[this_index: next_index]:
-            df.iat[resident, PRISON_COL] = facility_index
+            df.iat[resident, FACILITY_COL] = facility_index
 
         facility = str(df_nd.iloc[facility_index]['FACILITY'])
         for jurisdiction, j_re in jurisdiction_res.items():
