@@ -195,8 +195,8 @@ def main(csv_file):
         df_nd.iat[facility_index, TYPE_COL] = f_type
 
     # Write the facilities and residents tables
-    df_nd = df_nd.reset_index()
-    df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
+    df_nd = df_nd.reset_index(drop=True)  # drop the old index values that are of no use now
+    df_nd.index.name = 'INDEX'
     df_write_csv('facilities', df_nd)
     df.index.name = 'INDEX'  # or remove index with df = df.reset_index(drop=True)
     df_write_csv('residents', df)
