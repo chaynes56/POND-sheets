@@ -6,10 +6,6 @@ COPOST POND project table manipulation
 """
 # STATUS entries may be PENDING, ACTIVE (changed to PENDING at start of cycle), FLAGGED, INACTIVE, AND CHAPLIN
 
-# TODO
-#  indexing starting from 2
-# TODO? facilities output sorted by index
-
 import pandas as pd
 import re
 from datetime import datetime
@@ -203,8 +199,6 @@ def main(csv_file):
     df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
     df_write_csv('facilities', df_nd)
     df.index.name = 'INDEX'  # or remove index with df = df.reset_index(drop=True)
-    # FIXME following line
-    # df.index += 2  # Better if index values correspond to sheet row numbers, with header row and 1-based indexing
     df_write_csv('residents', df)
 
 
