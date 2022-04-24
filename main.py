@@ -106,6 +106,8 @@ def main(csv_file):
             make_full_name = f'{first_name} {last_name}'.strip()
             if re.sub(r'\s+', ' ', full_name) != make_full_name:
                 print(f'Bad full name {full_name} not {make_full_name} index {row_index}')
+                print(list(map(ord, list(full_name))))
+                print(list(map(ord, list(make_full_name))))
         if sent_letter:
             df.at[row_index, 'SENT_LETTER'] = DEFAULT_TIME if sent_letter == 'COPOST' else sent_letter.split()[0]
 
@@ -183,11 +185,13 @@ def main(csv_file):
         for jurisdiction, j_re in jurisdiction_res.items():
             if j_re.search(facility):
                 df_nd.iat[facility_index, JURISDICTION_COL] = jurisdiction
-                f_type = ('PRISON' if jurisdiction in ['STATE', 'FEDERAL']
+                f_type = ('PRISON' if jurisdiction == 'FEDERAL'
                           else 'JAIL' if jurisdiction == 'COUNTY'
                           else '')
-                df_nd.iat[facility_index, TYPE_COL] = f_type
                 break
+        else:
+            f_type = 'STATE'
+        df_nd.iat[facility_index, TYPE_COL] = f_type
 
     # Write the facilities and residents tables
     df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
