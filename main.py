@@ -189,18 +189,21 @@ def main(csv_file):
         for jurisdiction, j_re in jurisdiction_res.items():
             if j_re.search(facility):
                 df_nd.iat[facility_index, JURISDICTION_COL] = jurisdiction
-                f_type = ('PRISON' if jurisdiction == 'FEDERAL'
-                          else 'JAIL' if jurisdiction == 'COUNTY'
-                          else '')
+
+                f_type = ''  # Not sure if we're doing this.  ('PRISON' if jurisdiction == 'FEDERAL'
+                #           else 'JAIL' if jurisdiction == 'COUNTY'
+                #           else '')
                 break
         else:
-            f_type = 'STATE'
+            f_type = ''  # 'STATE'
         df_nd.iat[facility_index, TYPE_COL] = f_type
 
     # Write the facilities and residents tables
     df_nd.index.name = 'INDEX'  # or remove index with df_nd = df_nd.reset_index(drop=True)
     df_write_csv('facilities', df_nd)
     df.index.name = 'INDEX'  # or remove index with df = df.reset_index(drop=True)
+    # FIXME following line
+    # df.index += 2  # Better if index values correspond to sheet row numbers, with header row and 1-based indexing
     df_write_csv('residents', df)
 
 
