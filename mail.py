@@ -38,9 +38,11 @@ def write_facility(facility, f_rows):
         df_write_xlsx(f'NC/{facility}', pd.DataFrame(f_rows, columns=COLUMNS))
 
 def main():
-    """The main event"""
-    dfr = pd.concat([df_read_xlsx('Michael'), df_read_xlsx('Phil')], axis=0)
-    df = pd.DataFrame()
+    """Read data analyst resident Excel-format sheets and output mailing and NC sheets."""
+    dfr = pd.concat([df_read_xlsx('Michael'), df_read_xlsx('Phil')], axis=0)  # Combine all data analyst resident sheets
+    dfr = dfr.applymap(lambda s: s.strip().upper())  # Strip leading and trailing spaces and uppercase for uniformity
+    dfr = dfr.loc[dfr['ACTIVE'] != 'I']  # Remove inactive records
+    df = pd.DataFrame()  # Accumulate mailing columns in new df
     df = pd.concat([df, dfr.loc[:, 'RES_INDEX':'INMATE_ID']], axis=1)
     df['FULL_NAME_ID'] = dfr.apply(full_name_id_fn, axis=1)
     df = pd.concat([df, dfr['HOUSING']], axis=1)
@@ -48,7 +50,8 @@ def main():
     df['ADDRESS1'] = dfr.apply(address_fn, axis=1)
     df = df.rename(columns={'ADDRESS1': 'HOUSING_ADDRESS1'})
     df = df.drop(['HOUSING'], axis=1)
-    df_write_xlsx('mailing', df[df['STATE'] != 'NC'])  # don't write NC records
+    # Skip: for now leave NC records: df = df[df['STATE'] != 'NC']  # don't write NC records
+    df_write_xlsx('mailing', df)
 
     # Write NC/<facility>.xlsx for each facility in NC
     df = df[df['STATE'] == 'NC']  # only NC records
