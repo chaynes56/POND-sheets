@@ -50,11 +50,11 @@ def main():
     df['ADDRESS1'] = dfr.apply(address_fn, axis=1)
     df = df.rename(columns={'ADDRESS1': 'HOUSING_ADDRESS1'})
     df = df.drop(['HOUSING'], axis=1)
-    # Skip: for now leave NC records: df = df[df['F_STATE'] != 'NC']  # don't write NC records fixme F_STATE not present
-    df_write_xlsx('mailing', df)
+    dfw = df[dfr['F_STATE'] != 'NC']  # don't write NC records
+    df_write_xlsx('mailing', dfw)
 
     # Write NC/<facility>.xlsx for each facility in NC
-    df = df[df['F_STATE'] == 'NC']  # only NC records  fixme F_STATE not present
+    df = df[dfr['F_STATE'] == 'NC']  # only NC records
     df = df.sort_values(by=['FACILITY'])
     df = df.drop(df.loc[:, 'HOUSING_ADDRESS1':'ZIP'].columns, axis=1).drop(['RES_INDEX'], axis=1)
     facility, f_rows = None, None
